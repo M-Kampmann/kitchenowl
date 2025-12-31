@@ -5,8 +5,6 @@ services:
     restart: unless-stopped
     # environment:
     #   - BACK_URL=back:5000 # Change this if you rename the containers
-    ports:
-      - "80:80"
     depends_on:
       - back
   back:
