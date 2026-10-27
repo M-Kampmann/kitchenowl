@@ -5,6 +5,7 @@ from recipe_scrapers._exceptions import SchemaOrgException
 from recipe_scrapers.__version__ import __version__ as recipe_scrapers_version
 from requests_hardened import Config, Manager
 import requests
+from urllib.parse import urljoin, urlparse
 from app.config import FRONT_URL
 from app.errors import ForbiddenRequest
 from app.models.recipe import RecipeVisibility
@@ -24,6 +25,18 @@ request_manager = Manager(
         user_agent_override=USER_AGENT,
     )
 )
+
+
+def fixRelativeUrl(url: str, baseUrl: str) -> str:
+    """
+    If the URL is already absolute (i.e. includes a scheme and host), returns the unchanged URL.
+    Otherwise, i.e. if the URL is relative, returns an absolute URL of the resource relative to baseUrl.
+    """
+    parsedUrl = urlparse(url)
+    if parsedUrl.hostname:
+        return url
+
+    return urljoin(baseUrl, url)
 
 
 def scrapePublic(url: str, html: str, household: Household) -> dict[str, Any] | None:
@@ -106,7 +119,7 @@ def scrapePublic(url: str, html: str, household: Household) -> dict[str, Any] | 
     ):
         pass
     recipe.description = description
-    recipe.photo = scraper.image()
+    recipe.photo = fixRelativeUrl(scraper.image(), url)
     recipe.source = url
     items = {}
     for ingredient in parseIngredients(scraper.ingredients(), household.language):
@@ -154,7 +167,10 @@ def scrapeLocal(recipe_id: int, household: Household):
 def scrapeKitchenOwl(
     original_url: str, api_url: str, recipe_id: int
 ) -> dict[str, Any] | None:
-    res = requests.get(api_url + "/recipe/" + str(recipe_id))
+    try:
+        res = request_manager.send_request("GET", f"{api_url}/recipe/{recipe_id}")
+    except Exception:
+        return None
     if res.status_code != requests.codes.ok:
         if res.status_code == requests.codes.unauthorized:
             raise ForbiddenRequest()
